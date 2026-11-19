@@ -78,10 +78,9 @@ app.get('/api/status', async (req, res) => {
 });
 
 app.post('/api/install', async (req, res) => {
-  const py = await findPython({ requireModule: false, refresh: true, preferred: (await getSettings()).pythonPath || undefined });
-  if (!py) return bad(res, 'No Python 3 interpreter found', 500);
+  // Same installer as `make install`: creates .venv and pip-installs easyeda2kicad into it.
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  const child = spawn(py.cmd, [...py.args, '-m', 'pip', 'install', '--upgrade', '-r', path.join(ROOT, 'requirements.txt')], { windowsHide: true });
+  const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'install.js')], { windowsHide: true, cwd: ROOT });
   child.stdout.pipe(res, { end: false });
   child.stderr.pipe(res, { end: false });
   child.on('close', (code) => { res.end(`\n[exit code ${code}]\n`); findPython({ refresh: true }); });
@@ -182,8 +181,9 @@ app.post('/api/fs/open', (req, res) => {
   const p = String(req.body?.path || '');
   if (!p || !fs.existsSync(p)) return bad(res, 'Path does not exist');
   const cmd = process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
-  spawn(cmd, [p], { detached: true, stdio: 'ignore' }).unref();
-  res.json({ ok: true });
+  const child = spawn(cmd, [p], { detached: true, stdio: 'ignore' });
+  child.on('error', () => { if (!res.headersSent) bad(res, `No file manager available (${cmd} not found)`, 501); });
+  child.on('spawn', () => { child.unref(); if (!res.headersSent) res.json({ ok: true }); });
 });
 
 app.get('/api/svg', (req, res) => {
@@ -249,9 +249,21 @@ app.post('/api/relink', async (req, res) => {
 
 // ------------------------------------------------------------------ start
 function openBrowser(url) {
+  const headless = process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+  if (headless) {
+    console.log('No desktop session detected. Open the URL above in a browser');
+    console.log(`(over SSH:  ssh -L ${url.split(':').pop()}:localhost:${url.split(':').pop()} <user>@<this-host>  then browse to ${url}).`);
+    return;
+  }
   const cmd = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
   const args = process.platform === 'win32' ? ['/c', 'start', '""', url] : [url];
-  try { spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch { /* ignore */ }
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', () => console.log(`Could not open a browser automatically. Open ${url} manually.`));
+    child.unref();
+  } catch {
+    console.log(`Could not open a browser automatically. Open ${url} manually.`);
+  }
 }
 
 function listen(port, attempts = 10) {

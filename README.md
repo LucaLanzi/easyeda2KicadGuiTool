@@ -43,32 +43,123 @@ in the 3D viewer straight away.
 - `--overwrite`, `--use-cache` and `--custom-field KEY:VALUE` options, plus an *Equivalent CLI*
   view of each export.
 
-## Requirements
+## Installation
 
-- [Node.js](https://nodejs.org/) 18+
-- [Python](https://www.python.org/downloads/) 3.9+ (`easyeda2kicad` is installed automatically)
-- KiCad 6 or newer
+### 1. Prerequisites
 
-## Quick start
+| | Version | Notes |
+|---|---|---|
+| [Node.js](https://nodejs.org/) | 18+ | runs the web front end |
+| [Python](https://www.python.org/downloads/) | 3.9+ | runs the easyeda2kicad conversion |
+| [GNU Make](https://www.gnu.org/software/make/) | any | only needed for `make install` |
+| [Git](https://git-scm.com/) | any | to clone the repo |
+| [KiCad](https://www.kicad.org/) | 6 – 10 | to use the generated libraries |
+
+<details>
+<summary><b>Linux (Debian / Ubuntu)</b></summary>
+
+```bash
+sudo apt install git make python3 python3-venv python3-pip
+# Node.js 18+ (the distro package is often too old), e.g. with nvm:
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+nvm install --lts
+```
+Fedora: `sudo dnf install git make python3 python3-pip nodejs`.
+Arch: `sudo pacman -S git make python python-pip nodejs npm`.
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+```bash
+xcode-select --install          # git + make
+brew install node python@3.12
+```
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+From PowerShell (open a **new** terminal afterwards so `PATH` is refreshed):
+
+```powershell
+winget install -e --id Git.Git
+winget install -e --id OpenJS.NodeJS.LTS
+winget install -e --id Python.Python.3.12
+winget install -e --id ezwinports.make
+```
+`make` works in PowerShell, cmd and Git Bash. If you'd rather not install Make, use
+`start.bat` (see *Without make* below).
+</details>
+
+If Node.js or Python is missing, `make install` tries to install it for you (winget on
+Windows, Homebrew on macOS). On Linux it prints the command to run instead.
+
+### 2. Install
 
 ```bash
 git clone https://github.com/LucaLanzi/easyeda2KicadGuiTool.git
 cd easyeda2KicadGuiTool
+make install
 ```
 
-**Windows:** double-click `start.bat`.
-**macOS / Linux:** `./start.sh`
+`make install` runs these steps:
 
-Or manually:
+1. **check-node**: checks for Node.js 18+.
+2. **node-deps**: runs `npm install` (Express).
+3. **python-deps**: finds Python 3.9+, creates a project-local virtual environment in
+   `.venv/`, and runs `pip install -r requirements.txt` (easyeda2kicad) inside it. Nothing is
+   installed into your system Python, so the Debian/Ubuntu *"externally-managed-environment"*
+   and *"No module named pip"* errors don't apply.
+4. **verify**: checks that the backend can import easyeda2kicad.
+
+### 3. Run
 
 ```bash
-npm install
-npm run setup     # pip install -r requirements.txt with the detected Python
-npm start         # opens http://localhost:3780
+make start        # starts the server and opens http://localhost:3780
 ```
 
-If easyeda2kicad is missing, the header shows **Install easyeda2kicad**. If Python isn't
-found automatically, set the interpreter path under *Options*.
+On a headless machine or over SSH, use `make dev` (no browser), then forward the port from
+your desktop with `ssh -L 3780:localhost:3780 user@host` and browse to
+<http://localhost:3780>. The server only listens on `127.0.0.1`.
+
+### Make targets
+
+| Target | What it does |
+|---|---|
+| `make install` | full installation (all steps above) |
+| `make start` | start the app and open the browser |
+| `make dev` | start without opening a browser |
+| `make verify` | check Python + easyeda2kicad |
+| `make update` | update npm packages and upgrade easyeda2kicad |
+| `make clean` | delete `node_modules/` and `.venv/` (your ledger in `data/` is kept) |
+| `make reinstall` | `clean` + `install` |
+| `make help` | list all targets |
+
+Variables can be overridden, e.g. `make start PORT=8080` or `make install NODE=/opt/node/bin/node`.
+
+### Without make
+
+- **Windows:** double-click `start.bat`.
+- **macOS / Linux:** `./start.sh`
+
+Both scripts run `npm install` and the Python installer (`node scripts/install.js`, which
+creates the same `.venv`) the first time, then start the app. By hand, that's
+`npm install && npm run setup && npm start`.
+
+### Troubleshooting
+
+- **"Python 3 not found" / wrong interpreter:** set the path under *Options → Python
+  interpreter* in the app, or run with `PYTHON=/path/to/python`. The app looks for Python in
+  this order: that setting, `$PYTHON`, the project `.venv`, an activated virtualenv/conda env,
+  then the system Python.
+- **Debian/Ubuntu: "ensurepip is not available":** run `sudo apt install python3-venv`, then `make install` again.
+- **Windows: "Python was not found; run without arguments to install from the Microsoft Store":**
+  that's the Store stub. Install Python with winget (above). The installer detects the real
+  install even before `PATH` is refreshed.
+- **Windows Application Control blocks `easyeda2kicad.exe`:** not a problem. The app runs
+  easyeda2kicad through Python, not through the generated `.exe`.
+- **Something is broken:** run `make reinstall`.
 
 ## Typical workflow
 
@@ -109,7 +200,10 @@ server.js            Express server: REST API, folder browser, streams export pr
 lib/python.js        Python discovery + NDJSON bridge to the backend
 backend/converter.py Python backend driving the easyeda2kicad library
 public/              Front end (vanilla HTML/CSS/JS, no build step)
-scripts/             setup + environment check helpers
+scripts/install.js   Python installer (.venv + easyeda2kicad), used by make / start scripts
+scripts/check-python.js  environment check
+Makefile             make install / start / update / clean ...
+start.bat, start.sh  one-click launchers
 ```
 
 ## Credits & license
