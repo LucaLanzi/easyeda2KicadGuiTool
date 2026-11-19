@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>easyeda2Kicad GUI Tool</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='6' y='6' width='20' height='20' rx='3' fill='%23314cb0'/%3E%3Cg stroke='%23c9a227' stroke-width='2.5'%3E%3Cpath d='M10 2v4M16 2v4M22 2v4M10 26v4M16 26v4M22 26v4M2 10h4M2 16h4M2 22h4M26 10h4M26 16h4M26 22h4'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="6" y="6" width="20" height="20" rx="3"/><g><path d="M10 2v4M16 2v4M22 2v4M10 26v4M16 26v4M22 26v4M2 10h4M2 16h4M2 22h4M26 10h4M26 16h4M26 22h4"/></g></svg>
+    <div>
+      <h1>easyeda2Kicad GUI Tool</h1>
+      <p class="sub">LCSC / JLCPCB parts &rarr; KiCad symbols, footprints &amp; 3D models</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span id="envStatus" class="pill pill-wait" title="Python / easyeda2kicad status">Checking Python&hellip;</span>
+    <button id="btnSetup" class="btn ghost hidden">Install easyeda2kicad</button>
+    <button id="btnTheme" class="btn ghost icon" title="Toggle light/dark theme" aria-label="Toggle theme">&#9680;</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ============================== LEDGER ============================== -->
+  <section class="panel ledger-panel">
+    <div class="panel-head">
+      <h2>Parts ledger</h2>
+      <span class="muted" id="ledgerCount">0 parts</span>
+    </div>
+
+    <div class="add-bar">
+      <textarea id="idInput" rows="1" placeholder="Enter LCSC / JLCPCB part numbers, e.g.  C2040 C20197, C163691"></textarea>
+      <button id="btnAdd" class="btn primary">Add</button>
+    </div>
+    <div class="add-defaults">
+      <span class="muted">New parts get:</span>
+      <label><input type="checkbox" data-default="symbol"> Symbol</label>
+      <label><input type="checkbox" data-default="footprint"> Footprint</label>
+      <label><input type="checkbox" data-default="model3d"> 3D</label>
+      <label><input type="checkbox" data-default="svg"> SVG</label>
+      <span class="spacer"></span>
+      <label class="btn ghost small file-btn">Import CSV / BOM<input type="file" id="csvFile" accept=".csv,.tsv,.txt"></label>
+      <button id="btnExportCsv" class="btn ghost small">Save CSV</button>
+    </div>
+
+    <div class="toolbar">
+      <button id="btnLookup" class="btn small">Look up selected</button>
+      <button id="btnRemove" class="btn small danger-ghost">Remove selected</button>
+      <span class="spacer"></span>
+      <input id="filter" type="search" placeholder="Filter&hellip;" class="filter">
+    </div>
+
+    <div class="table-wrap">
+      <table class="ledger" id="ledger">
+        <thead>
+          <tr>
+            <th class="c-sel"><input type="checkbox" id="selAll" title="Select all"></th>
+            <th class="c-id">LCSC ID</th>
+            <th class="c-part">Part</th>
+            <th class="c-opt" data-col="full" title="Toggle Full (symbol + footprint + 3D) for all visible rows">Full</th>
+            <th class="c-opt" data-col="symbol" title="Toggle for all visible rows">Sym</th>
+            <th class="c-opt" data-col="footprint" title="Toggle for all visible rows">FP</th>
+            <th class="c-opt" data-col="model3d" title="Toggle for all visible rows">3D</th>
+            <th class="c-opt" data-col="svg" title="Toggle for all visible rows">SVG</th>
+            <th class="c-notes">Notes</th>
+            <th class="c-status">Status</th>
+            <th class="c-act"></th>
+          </tr>
+        </thead>
+        <tbody id="ledgerBody"></tbody>
+      </table>
+      <div class="empty" id="ledgerEmpty">
+        <p><strong>No parts yet.</strong></p>
+        <p class="muted">Type LCSC numbers above (e.g. <code>C2040</code>), or import a JLCPCB BOM / CSV.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== EXPORT ============================== -->
+  <section class="panel export-panel">
+    <div class="panel-head"><h2>Export location</h2></div>
+
+    <div class="field">
+      <label for="outputDir">Library output folder</label>
+      <div class="path-row">
+        <input id="outputDir" class="mono" spellcheck="false" placeholder="C:\path\to\project\libs">
+        <button class="btn small" data-browse="outputDir">Browse&hellip;</button>
+        <button class="btn small ghost win-only" data-native="outputDir" title="Windows folder dialog">&#128193;</button>
+        <button class="btn small ghost icon" data-open="outputDir" title="Open in file explorer">&#8599;</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="projectDir">KiCad project folder <span class="muted">(base for <code>${KIPRJMOD}</code>)</span></label>
+      <div class="path-row">
+        <input id="projectDir" class="mono" spellcheck="false" placeholder="Folder that contains your .kicad_pro">
+        <button class="btn small" data-browse="projectDir">Browse&hellip;</button>
+        <button class="btn small ghost win-only" data-native="projectDir" title="Windows folder dialog">&#128193;</button>
+        <button class="btn small ghost icon" data-open="projectDir" title="Open in file explorer">&#8599;</button>
+      </div>
+      <p class="hint" id="projectHint"></p>
+    </div>
+
+    <div class="names">
+      <div class="field">
+        <label for="libName">Library name</label>
+        <div class="path-row">
+          <input id="libName" spellcheck="false" placeholder="MyParts">
+          <label class="check inline" title="Use the library name for all four outputs"><input type="checkbox" id="linkNames"> Same for all</label>
+        </div>
+      </div>
+      <div class="name-grid">
+        <label for="nameSymbol">Symbol library</label>
+        <div class="suffixed"><input id="nameSymbol" spellcheck="false"><span>.kicad_sym</span></div>
+        <label for="nameFootprint">Footprint library</label>
+        <div class="suffixed"><input id="nameFootprint" spellcheck="false"><span>.pretty</span></div>
+        <label for="nameModel">3D model folder</label>
+        <div class="suffixed"><input id="nameModel" spellcheck="false"><span>.3dshapes</span></div>
+        <label for="nameSvg">SVG folder</label>
+        <div class="suffixed"><input id="nameSvg" spellcheck="false"><span>.svgs</span></div>
+      </div>
+    </div>
+
+    <div class="tree-card">
+      <div class="tree-title">Output preview</div>
+      <pre id="tree" class="tree"></pre>
+      <div class="model-ref">
+        <span class="muted">Footprint 3D model path:</span>
+        <code id="modelRef"></code>
+      </div>
+      <div id="refWarning" class="warn hidden"></div>
+    </div>
+
+    <details class="opts" open>
+      <summary>3D model linking</summary>
+      <div class="radio-col">
+        <label><input type="radio" name="modelPathMode" value="project"> Project-relative <code>${KIPRJMOD}/&hellip;</code> <span class="tag">recommended</span></label>
+        <label><input type="radio" name="modelPathMode" value="absolute"> Absolute path</label>
+        <label><input type="radio" name="modelPathMode" value="custom"> Custom prefix / variable
+          <input id="customModelPrefix" class="mono small-input" placeholder="${MY_3D}/MyParts.3dshapes" spellcheck="false"></label>
+      </div>
+      <div class="row">
+        <span class="muted">Footprints reference:</span>
+        <label><input type="radio" name="modelExt" value="wrl"> .wrl</label>
+        <label><input type="radio" name="modelExt" value="step"> .step</label>
+        <span class="muted small" id="stepNote">(both are always downloaded; .wrl has the offset baked in)</span>
+      </div>
+    </details>
+
+    <details class="opts">
+      <summary>Options</summary>
+      <label class="check"><input type="checkbox" id="updateLibTables"> Add libraries to the project's <code>sym-lib-table</code> / <code>fp-lib-table</code></label>
+      <label class="check"><input type="checkbox" id="overwrite"> <code>--overwrite</code> existing symbols / footprints / models</label>
+      <label class="check"><input type="checkbox" id="useCache"> <code>--use-cache</code> (cache EasyEDA API responses)</label>
+      <div class="field">
+        <label for="customFields"><code>--custom-field</code> symbol properties (one <code>KEY:VALUE</code> per line)</label>
+        <textarea id="customFields" rows="2" class="mono" placeholder="Supplier:LCSC&#10;Project:MyBoard" spellcheck="false"></textarea>
+      </div>
+      <div class="field">
+        <label for="pythonPath">Python interpreter <span class="muted">(blank = auto-detect)</span></label>
+        <input id="pythonPath" class="mono" spellcheck="false" placeholder="auto">
+      </div>
+    </details>
+
+    <details class="opts">
+      <summary>Equivalent CLI</summary>
+      <pre id="cliPreview" class="cli"></pre>
+      <p class="hint">For reference. The GUI calls the easyeda2kicad library directly so each output can have its own name and the 3D path is relative to the project folder you picked.</p>
+    </details>
+
+    <details class="opts">
+      <summary>Maintenance</summary>
+      <p class="hint">Re-point the 3D model paths of <em>every</em> footprint in the footprint library above to the current setting. Useful after moving a library into a project.</p>
+      <button id="btnRelink" class="btn small">Relink 3D paths in <span id="relinkName">.pretty</span></button>
+    </details>
+
+    <div class="export-actions">
+      <button id="btnExport" class="btn primary big">Export selected</button>
+      <button id="btnExportAll" class="btn big">Export all</button>
+      <button id="btnCancel" class="btn danger-ghost hidden">Cancel</button>
+    </div>
+    <div class="progress hidden" id="progress"><div class="bar" id="progressBar"></div></div>
+
+    <div class="log-head">
+      <span>Log</span>
+      <button class="btn ghost tiny" id="btnClearLog">Clear</button>
+    </div>
+    <div id="log" class="log" aria-live="polite"></div>
+  </section>
+</main>
+
+<!-- ============================== FOLDER BROWSER ============================== -->
+<dialog id="browser" class="browser">
+  <form method="dialog" class="browser-inner">
+    <header class="browser-head">
+      <h3 id="browserTitle">Choose folder</h3>
+      <button class="btn ghost icon" value="cancel" aria-label="Close">&times;</button>
+    </header>
+    <div class="browser-body">
+      <aside class="places" id="places"></aside>
+      <div class="browser-main">
+        <div class="crumbs" id="crumbs"></div>
+        <div class="path-row">
+          <input id="browserPath" class="mono" spellcheck="false">
+          <button type="button" class="btn small" id="browserGo">Go</button>
+          <button type="button" class="btn small" id="browserUp" title="Parent folder">&uarr;</button>
+          <button type="button" class="btn small" id="browserNew">New folder</button>
+        </div>
+        <div id="browserMarkers" class="markers"></div>
+        <ul id="dirList" class="dir-list"></ul>
+      </div>
+    </div>
+    <footer class="browser-foot">
+      <span class="muted mono" id="browserSel"></span>
+      <span class="spacer"></span>
+      <button class="btn ghost" value="cancel">Cancel</button>
+      <button class="btn primary" id="browserSelect" value="ok">Select this folder</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- ============================== PREVIEW ============================== -->
+<dialog id="preview" class="preview">
+  <form method="dialog" class="preview-inner">
+    <header class="browser-head">
+      <h3 id="previewTitle">Preview</h3>
+      <button class="btn ghost icon" value="cancel" aria-label="Close">&times;</button>
+    </header>
+    <div id="previewMeta" class="preview-meta"></div>
+    <div class="preview-grid">
+      <figure><figcaption>Symbol</figcaption><div class="svg-box" id="pvSymbol"></div></figure>
+      <figure><figcaption>Footprint</figcaption><div class="svg-box" id="pvFootprint"></div></figure>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>

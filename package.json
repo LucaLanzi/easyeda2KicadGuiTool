@@ -1,0 +1,21 @@
+{
+  "name": "easyeda2kicadguitool",
+  "version": "1.0.0",
+  "description": "Web GUI (Node.js) for easyeda2kicad.py - manage a ledger of LCSC/JLCPCB parts and export KiCad symbols, footprints and project-relative 3D models.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --no-open",
+    "setup": "node scripts/setup.js"
+  },
+  "keywords": ["kicad", "easyeda", "lcsc", "jlcpcb", "easyeda2kicad", "pcb"],
+  "author": "Luca Lanzi",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
