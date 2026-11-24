@@ -40,6 +40,11 @@ in the 3D viewer straight away.
   their 3D bodies.
 - **Relink tool**: rewrites the 3D paths of every footprint in an existing `.pretty`
   folder, e.g. after moving a library into a project.
+- **Offline datasheets**: every exported part's datasheet PDF is downloaded to a
+  `datasheets/` folder next to the libraries, named `<LCSC>_<part>.pdf` (e.g.
+  `C2040_RP2040.pdf`). Sources tried in order: the EasyEDA datasheet link, the LCSC
+  product API, the JLCPCB parts API, then the LCSC product page. Existing files are kept
+  unless *overwrite* is on. Toggle it under *Options*.
 - `--overwrite`, `--use-cache` and `--custom-field KEY:VALUE` options, plus an *Equivalent CLI*
   view of each export.
 

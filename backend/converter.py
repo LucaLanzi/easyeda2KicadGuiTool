@@ -165,6 +165,133 @@ def relink_footprint_file(fp_file: Path, model_ref: str, model_ext: str) -> bool
 
 
 # --------------------------------------------------------------------------- #
+# Datasheets
+# --------------------------------------------------------------------------- #
+DATASHEET_DIR_NAME = "datasheets"
+HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    ),
+    "Accept": "application/pdf,application/json,text/html;q=0.9,*/*;q=0.8",
+}
+PDF_LINK_RE = re.compile(r'https?:[^"\'<>\s]+?\.pdf', re.IGNORECASE)
+UNSAFE_FILE_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+
+
+def datasheet_filename(lcsc_id: str, part_name: str | None) -> str:
+    """'C2040' + 'RP2040' -> 'C2040_RP2040.pdf' (safe on every OS)."""
+    name = UNSAFE_FILE_CHARS_RE.sub("_", (part_name or "").strip())
+    name = re.sub(r"[\s_]+", "_", name).strip("._ ")[:80]
+    return f"{lcsc_id}_{name}.pdf" if name else f"{lcsc_id}.pdf"
+
+
+def _is_pdf_url(url: str) -> bool:
+    return bool(url) and url.split("?", 1)[0].lower().endswith(".pdf")
+
+
+def _http_get(url: str, timeout: float = 30, **kw: Any):
+    import requests
+
+    return requests.get(url, headers=HTTP_HEADERS, timeout=timeout, **kw)
+
+
+def datasheet_candidates(lcsc_id: str, datasheet_url: str | None):
+    """Yield possible PDF URLs for a part, best first (lazily, so later
+    look-ups only run if the earlier candidates fail)."""
+    seen: set[str] = set()
+
+    def fresh(url: Any) -> str | None:
+        if not isinstance(url, str) or not url.strip():
+            return None
+        url = url.strip()
+        if url.startswith("//"):
+            url = "https:" + url
+        if url in seen:
+            return None
+        seen.add(url)
+        return url
+
+    # 1. the link stored in the EasyEDA part, if it already is a PDF
+    if datasheet_url and _is_pdf_url(datasheet_url):
+        if u := fresh(datasheet_url):
+            yield u
+
+    # 2. LCSC product API -> result.pdfUrl
+    try:
+        r = _http_get(
+            "https://wmsc.lcsc.com/ftps/wm/product/detail",
+            params={"productCode": lcsc_id},
+            timeout=20,
+        )
+        res = (r.json() or {}).get("result") or {}
+        if u := fresh(res.get("pdfUrl")):
+            yield u
+    except Exception as err:
+        logging.debug(f"LCSC API lookup failed: {err}")
+
+    # 3. JLCPCB parts API -> dataManualUrl
+    try:
+        r = _http_get(
+            "https://jlcpcb.com/api/overseas-pcb-order/v1/shoppingCart/"
+            "smtGood/getComponentDetail",
+            params={"componentCode": lcsc_id},
+            timeout=20,
+        )
+        data = (r.json() or {}).get("data") or {}
+        if u := fresh(data.get("dataManualUrl")):
+            yield u
+    except Exception as err:
+        logging.debug(f"JLCPCB API lookup failed: {err}")
+
+    # 4. scrape the product page the EasyEDA part links to for a .pdf link
+    if datasheet_url and not _is_pdf_url(datasheet_url):
+        try:
+            r = _http_get(datasheet_url, timeout=20)
+            for m in PDF_LINK_RE.finditer(r.text.replace("\\/", "/")):
+                if u := fresh(m.group(0)):
+                    yield u
+        except Exception as err:
+            logging.debug(f"Product page scrape failed: {err}")
+
+
+def download_datasheet(
+    lcsc_id: str, part_name: str | None, datasheet_url: str | None,
+    out_dir: Path, overwrite: bool = False,
+) -> tuple[Path | None, str]:
+    """Download a part's datasheet PDF into out_dir.
+
+    Returns (path, status) where status is 'downloaded', 'exists' or an
+    error message (path is None in that case)."""
+    target = out_dir / datasheet_filename(lcsc_id, part_name)
+    if target.is_file() and target.stat().st_size > 0 and not overwrite:
+        return target, "exists"
+    # an earlier download under another name (e.g. part renamed) also counts
+    if not overwrite:
+        for old in out_dir.glob(f"{lcsc_id}_*.pdf") if out_dir.is_dir() else []:
+            if old.stat().st_size > 0:
+                return old, "exists"
+
+    last_err = "no datasheet link found on EasyEDA / LCSC / JLCPCB"
+    for url in datasheet_candidates(lcsc_id, datasheet_url):
+        try:
+            r = _http_get(url, timeout=60)
+            r.raise_for_status()
+            content = r.content
+            if not content.startswith(b"%PDF"):
+                last_err = f"{url} did not return a PDF"
+                continue
+            out_dir.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_suffix(".pdf.part")
+            tmp.write_bytes(content)
+            os.replace(tmp, target)
+            return target, "downloaded"
+        except Exception as err:
+            last_err = f"{url}: {err}"
+    return None, last_err
+
+
+# --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
 def cmd_check(_: dict[str, Any]) -> int:
@@ -260,6 +387,8 @@ def cmd_export(job: dict[str, Any]) -> int:
     fp_dir = out_dir / f"{fp_name}.pretty"
     model_dir = out_dir / f"{model_name}.3dshapes"
     svg_dir = out_dir / f"{svg_name}.svgs"
+    datasheet_dir = out_dir / DATASHEET_DIR_NAME
+    want_datasheets = bool(job.get("download_datasheets", True))
 
     path_mode = job.get("model_path_mode", "project")
     model_ext = job.get("model_ext", "wrl")
@@ -290,6 +419,7 @@ def cmd_export(job: dict[str, Any]) -> int:
         footprint_lib=str(fp_dir),
         model_dir=str(model_dir),
         svg_dir=str(svg_dir),
+        datasheet_dir=str(datasheet_dir) if want_datasheets else None,
         model_ref=model_ref,
         model_ext=model_ext,
     )
@@ -377,6 +507,18 @@ def cmd_export(job: dict[str, Any]) -> int:
                 f_path.write_text(render_footprint_svg(cad), encoding="utf-8")
                 result["outputs"]["svg"] = [str(s_path), str(f_path)]
                 logging.info(f"SVGs -> {svg_dir.name}")
+
+            if want_datasheets:
+                info = EasyedaSymbolImporter(easyeda_cp_cad_data=cad).get_symbol().info
+                ds_path, ds_status = download_datasheet(
+                    lcsc_id, info.mpn or info.name, info.datasheet, datasheet_dir, overwrite
+                )
+                if ds_path is None:
+                    result["warnings"].append(f"Datasheet not downloaded: {ds_status}")
+                else:
+                    result["outputs"]["datasheet"] = str(ds_path)
+                    if ds_status == "downloaded":
+                        logging.info(f"Datasheet {ds_path.name} -> {datasheet_dir.name}/")
 
             result["status"] = "warning" if result["warnings"] else "ok"
             ok_count += 1
