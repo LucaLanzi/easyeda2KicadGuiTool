@@ -233,7 +233,8 @@
         if (o.footprint) bits.push(`fp <code>${esc(o.footprint)}</code>`);
         if (o.model_ref) bits.push(`3D <code>${esc(o.model_ref)}</code>`);
         else if (o.model) bits.push(`3D <code>${esc(o.model)}</code>`);
-        if (o.datasheet) bits.push(`datasheet <code>datasheets/${esc(o.datasheet.split(/[\\/]/).pop())}</code>`);
+        if (o.datasheet_ref) bits.push(`datasheet <code>${esc(o.datasheet_ref)}</code>`);
+        else if (o.datasheet) bits.push(`datasheet <code>datasheets/${esc(o.datasheet.split(/[\\/]/).pop())}</code>`);
         (r.warnings || []).forEach((w) => bits.push(`<span style="color:var(--warn)">${esc(w)}</span>`));
         rows.push(`<tr class="row-detail"><td colspan="11">${bits.join(' &nbsp;·&nbsp; ')}</td></tr>`);
       }
@@ -431,6 +432,8 @@
     $('#useCache').checked = !!s.useCache;
     $('#updateLibTables').checked = !!s.updateLibTables;
     $('#downloadDatasheets').checked = s.downloadDatasheets !== false;
+    $('#linkDatasheets').checked = s.linkDatasheets !== false;
+    $('#linkDatasheets').disabled = s.downloadDatasheets === false;
     $('#customFields').value = (s.customFields || []).join('\n');
     $('#pythonPath').value = s.pythonPath || '';
     $$('[data-default]').forEach((cb) => { cb.checked = !!s.defaults[cb.dataset.default]; });
@@ -472,8 +475,12 @@
     $('input[name="modelPathMode"][value="custom"]').checked = true; state.settings.modelPathMode = 'custom';
     onSettingsChanged();
   });
-  for (const id of ['overwrite', 'useCache', 'updateLibTables', 'downloadDatasheets']) {
-    $(`#${id}`).addEventListener('change', (e) => { state.settings[id] = e.target.checked; onSettingsChanged(); });
+  for (const id of ['overwrite', 'useCache', 'updateLibTables', 'downloadDatasheets', 'linkDatasheets']) {
+    $(`#${id}`).addEventListener('change', (e) => {
+      state.settings[id] = e.target.checked;
+      if (id === 'downloadDatasheets') $('#linkDatasheets').disabled = !e.target.checked;
+      onSettingsChanged();
+    });
   }
   $('#customFields').addEventListener('input', (e) => {
     state.settings.customFields = e.target.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean); onSettingsChanged();
@@ -713,6 +720,7 @@
       use_cache: s.useCache,
       update_lib_tables: s.updateLibTables,
       download_datasheets: s.downloadDatasheets !== false,
+      link_datasheets: s.linkDatasheets !== false,
       custom_fields: custom,
       parts: parts.map((p) => ({ id: p.id, symbol: p.symbol, footprint: p.footprint, model3d: p.model3d, svg: p.svg })),
     };

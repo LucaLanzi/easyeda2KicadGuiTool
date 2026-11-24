@@ -43,8 +43,13 @@ in the 3D viewer straight away.
 - **Offline datasheets**: every exported part's datasheet PDF is downloaded to a
   `datasheets/` folder next to the libraries, named `<LCSC>_<part>.pdf` (e.g.
   `C2040_RP2040.pdf`). Sources tried in order: the EasyEDA datasheet link, the LCSC
-  product API, the JLCPCB parts API, then the LCSC product page. Existing files are kept
-  unless *overwrite* is on. Toggle it under *Options*.
+  product API, the JLCPCB parts API, LCSC's `/datasheet/<id>.pdf`, then the LCSC product
+  page. Existing files are kept unless *overwrite* is on. Each symbol's `Datasheet` field
+  is pointed at the local copy (`${KIPRJMOD}/…/datasheets/C2040_RP2040.pdf`, or an
+  absolute path without a project folder), so pressing **D** on a symbol in KiCad opens
+  it offline; the original web link is kept in a hidden `Datasheet URL` field. Symbols
+  already in the library get their `Datasheet` field updated without needing *overwrite*.
+  Both are toggles under *Options*.
 - `--overwrite`, `--use-cache` and `--custom-field KEY:VALUE` options, plus an *Equivalent CLI*
   view of each export.
 

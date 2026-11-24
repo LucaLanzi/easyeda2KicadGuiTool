@@ -244,7 +244,11 @@ def datasheet_candidates(lcsc_id: str, datasheet_url: str | None):
     except Exception as err:
         logging.debug(f"JLCPCB API lookup failed: {err}")
 
-    # 4. scrape the product page the EasyEDA part links to for a .pdf link
+    # 4. LCSC's direct datasheet link
+    if u := fresh(f"https://www.lcsc.com/datasheet/{lcsc_id}.pdf"):
+        yield u
+
+    # 5. scrape the product page the EasyEDA part links to for a .pdf link
     if datasheet_url and not _is_pdf_url(datasheet_url):
         try:
             r = _http_get(datasheet_url, timeout=20)
@@ -289,6 +293,30 @@ def download_datasheet(
         except Exception as err:
             last_err = f"{url}: {err}"
     return None, last_err
+
+
+SYM_BLOCK_RE = r'\n(\s*)\(symbol "{name}".*?\n\1\)(?=\n|$)'
+DATASHEET_PROP_RE = re.compile(r'(\(property\s+"Datasheet"\s+")((?:[^"\\]|\\.)*)(")')
+
+
+def set_symbol_datasheet(lib_path: Path, symbol_name: str, value: str) -> bool:
+    """Set the Datasheet field of one symbol already in a .kicad_sym library.
+    Returns True if the file was changed."""
+    if not lib_path.is_file():
+        return False
+    text = lib_path.read_text(encoding="utf-8")
+    m = re.search(SYM_BLOCK_RE.format(name=re.escape(symbol_name)), text, flags=re.DOTALL)
+    if not m:
+        return False
+    block = m.group(0)
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    new_block, n = DATASHEET_PROP_RE.subn(
+        lambda d: d.group(1) + escaped + d.group(3), block, count=1
+    )
+    if not n or new_block == block:
+        return False
+    lib_path.write_text(text[: m.start()] + new_block + text[m.end():], encoding="utf-8")
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -389,6 +417,7 @@ def cmd_export(job: dict[str, Any]) -> int:
     svg_dir = out_dir / f"{svg_name}.svgs"
     datasheet_dir = out_dir / DATASHEET_DIR_NAME
     want_datasheets = bool(job.get("download_datasheets", True))
+    link_datasheets = want_datasheets and bool(job.get("link_datasheets", True))
 
     path_mode = job.get("model_path_mode", "project")
     model_ext = job.get("model_ext", "wrl")
@@ -447,10 +476,34 @@ def cmd_export(job: dict[str, Any]) -> int:
             if not cad:
                 raise RuntimeError("Failed to fetch data from EasyEDA API")
 
+            ee_sym = EasyedaSymbolImporter(easyeda_cp_cad_data=cad).get_symbol()
+            online_datasheet = ee_sym.info.datasheet
+            datasheet_ref: str | None = None
+
+            # Datasheet first, so the symbol's Datasheet field can point at it.
+            if want_datasheets:
+                ds_path, ds_status = download_datasheet(
+                    lcsc_id, ee_sym.info.mpn or ee_sym.info.name, online_datasheet,
+                    datasheet_dir, overwrite,
+                )
+                if ds_path is None:
+                    result["warnings"].append(f"Datasheet not downloaded: {ds_status}")
+                else:
+                    result["outputs"]["datasheet"] = str(ds_path)
+                    if ds_status == "downloaded":
+                        logging.info(f"Datasheet {ds_path.name} -> {datasheet_dir.name}/")
+                    if link_datasheets:
+                        datasheet_ref, _ = resolve_ref(ds_path, "project", project_dir)
+                        result["outputs"]["datasheet_ref"] = datasheet_ref
+
             if want_sym:
-                ee_sym = EasyedaSymbolImporter(easyeda_cp_cad_data=cad).get_symbol()
+                part_fields = dict(custom_fields)
+                if datasheet_ref:
+                    ee_sym.info.datasheet = datasheet_ref
+                    if online_datasheet and "Datasheet URL" not in part_fields:
+                        part_fields["Datasheet URL"] = online_datasheet
                 exporter = ExporterSymbolKicad(
-                    symbol=ee_sym, lib_path=str(sym_path), custom_fields=custom_fields
+                    symbol=ee_sym, lib_path=str(sym_path), custom_fields=part_fields
                 )
                 if exporter.save_to_lib(
                     lib_path=str(sym_path), footprint_lib_name=fp_name, overwrite=overwrite
@@ -458,8 +511,15 @@ def cmd_export(job: dict[str, Any]) -> int:
                     result["outputs"]["symbol"] = f"{sym_name}:{ee_sym.info.name}"
                     logging.info(f"Symbol {ee_sym.info.name} -> {sym_path.name}")
                 else:
-                    result["warnings"].append("Symbol already exists (enable overwrite)")
                     result["outputs"]["symbol"] = f"{sym_name}:{ee_sym.info.name} (kept)"
+                    if datasheet_ref and set_symbol_datasheet(
+                        sym_path, ee_sym.info.name, datasheet_ref
+                    ):
+                        logging.info(
+                            f"Symbol {ee_sym.info.name} kept; Datasheet field -> local PDF"
+                        )
+                    else:
+                        result["warnings"].append("Symbol already exists (enable overwrite)")
                 used["symbol"] = True
 
             if want_fp:
@@ -507,18 +567,6 @@ def cmd_export(job: dict[str, Any]) -> int:
                 f_path.write_text(render_footprint_svg(cad), encoding="utf-8")
                 result["outputs"]["svg"] = [str(s_path), str(f_path)]
                 logging.info(f"SVGs -> {svg_dir.name}")
-
-            if want_datasheets:
-                info = EasyedaSymbolImporter(easyeda_cp_cad_data=cad).get_symbol().info
-                ds_path, ds_status = download_datasheet(
-                    lcsc_id, info.mpn or info.name, info.datasheet, datasheet_dir, overwrite
-                )
-                if ds_path is None:
-                    result["warnings"].append(f"Datasheet not downloaded: {ds_status}")
-                else:
-                    result["outputs"]["datasheet"] = str(ds_path)
-                    if ds_status == "downloaded":
-                        logging.info(f"Datasheet {ds_path.name} -> {datasheet_dir.name}/")
 
             result["status"] = "warning" if result["warnings"] else "ok"
             ok_count += 1

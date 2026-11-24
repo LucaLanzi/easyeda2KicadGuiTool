@@ -171,6 +171,8 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 13px; }
 .hint.warn { color: var(--warn); }
 .check { display: flex; gap: 7px; align-items: flex-start; margin: 6px 0; font-size: 13px; }
 .check.inline { margin: 0; white-space: nowrap; font-weight: normal; font-size: 12.5px; }
+.check.sub { margin-left: 22px; }
+.check:has(input:disabled) { opacity: .55; }
 .names { border-top: 1px solid var(--border); padding-top: 12px; }
 .name-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; font-size: 12.5px; margin-bottom: 12px; }
 .name-grid > label { color: var(--muted); }
