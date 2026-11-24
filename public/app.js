@@ -233,6 +233,8 @@
         if (o.footprint) bits.push(`fp <code>${esc(o.footprint)}</code>`);
         if (o.model_ref) bits.push(`3D <code>${esc(o.model_ref)}</code>`);
         else if (o.model) bits.push(`3D <code>${esc(o.model)}</code>`);
+        if (o.datasheet_ref) bits.push(`datasheet <code>${esc(o.datasheet_ref)}</code>`);
+        else if (o.datasheet) bits.push(`datasheet <code>datasheets/${esc(o.datasheet.split(/[\\/]/).pop())}</code>`);
         (r.warnings || []).forEach((w) => bits.push(`<span style="color:var(--warn)">${esc(w)}</span>`));
         rows.push(`<tr class="row-detail"><td colspan="11">${bits.join(' &nbsp;·&nbsp; ')}</td></tr>`);
       }
@@ -429,6 +431,9 @@
     $('#overwrite').checked = !!s.overwrite;
     $('#useCache').checked = !!s.useCache;
     $('#updateLibTables').checked = !!s.updateLibTables;
+    $('#downloadDatasheets').checked = s.downloadDatasheets !== false;
+    $('#linkDatasheets').checked = s.linkDatasheets !== false;
+    $('#linkDatasheets').disabled = s.downloadDatasheets === false;
     $('#customFields').value = (s.customFields || []).join('\n');
     $('#pythonPath').value = s.pythonPath || '';
     $$('[data-default]').forEach((cb) => { cb.checked = !!s.defaults[cb.dataset.default]; });
@@ -470,8 +475,12 @@
     $('input[name="modelPathMode"][value="custom"]').checked = true; state.settings.modelPathMode = 'custom';
     onSettingsChanged();
   });
-  for (const id of ['overwrite', 'useCache', 'updateLibTables']) {
-    $(`#${id}`).addEventListener('change', (e) => { state.settings[id] = e.target.checked; onSettingsChanged(); });
+  for (const id of ['overwrite', 'useCache', 'updateLibTables', 'downloadDatasheets', 'linkDatasheets']) {
+    $(`#${id}`).addEventListener('change', (e) => {
+      state.settings[id] = e.target.checked;
+      if (id === 'downloadDatasheets') $('#linkDatasheets').disabled = !e.target.checked;
+      onSettingsChanged();
+    });
   }
   $('#customFields').addEventListener('input', (e) => {
     state.settings.customFields = e.target.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean); onSettingsChanged();
@@ -523,6 +532,7 @@
       dim('model', `<span class="t-dir">${esc(names.model)}.3dshapes/</span><span class="t-note">  .wrl + .step</span>`),
     ];
     if (want.svg) items.push(`<span class="t-dir">${esc(names.svg)}.svgs/</span>`);
+    if (s.downloadDatasheets !== false) items.push(`<span class="t-dir">datasheets/</span><span class="t-note">  &lt;LCSC&gt;_&lt;part&gt;.pdf</span>`);
 
     const lines = [];
     const branch = (arr, indent) => arr.forEach((it, i) => lines.push(`${indent}${i === arr.length - 1 ? '└─ ' : '├─ '}${it}`));
@@ -709,6 +719,8 @@
       overwrite: s.overwrite,
       use_cache: s.useCache,
       update_lib_tables: s.updateLibTables,
+      download_datasheets: s.downloadDatasheets !== false,
+      link_datasheets: s.linkDatasheets !== false,
       custom_fields: custom,
       parts: parts.map((p) => ({ id: p.id, symbol: p.symbol, footprint: p.footprint, model3d: p.model3d, svg: p.svg })),
     };

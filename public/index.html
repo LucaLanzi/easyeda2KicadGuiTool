@@ -154,6 +154,8 @@
       <summary>Options</summary>
       <label class="check"><input type="checkbox" id="updateLibTables"> Add libraries to the project's <code>sym-lib-table</code> / <code>fp-lib-table</code></label>
       <label class="check"><input type="checkbox" id="overwrite"> <code>--overwrite</code> existing symbols / footprints / models</label>
+      <label class="check"><input type="checkbox" id="downloadDatasheets"> Download datasheets (PDF) to a local <code>datasheets/</code> folder for offline use</label>
+      <label class="check sub"><input type="checkbox" id="linkDatasheets"> Point each symbol's <code>Datasheet</code> field at the local PDF (<code>${KIPRJMOD}/&hellip;</code>, so <kbd>D</kbd> in KiCad opens it offline)</label>
       <label class="check"><input type="checkbox" id="useCache"> <code>--use-cache</code> (cache EasyEDA API responses)</label>
       <div class="field">
         <label for="customFields"><code>--custom-field</code> symbol properties (one <code>KEY:VALUE</code> per line)</label>

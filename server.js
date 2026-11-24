@@ -31,6 +31,8 @@ const DEFAULT_SETTINGS = {
   overwrite: false,
   useCache: true,
   updateLibTables: true,
+  downloadDatasheets: true,
+  linkDatasheets: true,
   customFields: [],
   defaults: { symbol: true, footprint: true, model3d: true, svg: false },
   recentDirs: [],
